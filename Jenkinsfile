@@ -1,86 +1,93 @@
 pipeline {
-	agent any
+    // ГДЕ выполняем: на любом доступном агенте
+    agent any
 
-	options {
-		timeout(time: 10, unit: "MINUTES")
-		buildDiscarder(logRotator(numToKeepStr: '10'))
-		disableConcurrentBuilds()
-	}
+    options {
+        // Защита от зависаний: максимум 10 минут
+        timeout(time: 10, unit: 'MINUTES')
+        // Храним только 10 последних сборок
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        // Не запускаем две сборки одновременно
+        disableConcurrentBuilds()
+    }
 
-	parameters {
-		choice(name: 'TARGET_ENV', choices: ['staging', 'prod'], description: 'Куда деплоим')
-		string(name: 'APP_VERSION', defaultValue: '1.0.0', description: 'Версия приложения')
-		booleanParam(name: 'RUN_LINT', defaultValue: true, description='Нужно ли запускать линтер')
-	}
+    parameters {
+        // Входные данные, которые можно менять при запуске
+        choice(name: 'TARGET_ENV', choices: ['staging', 'prod'], description: 'Куда деплоим')
+        string(name: 'APP_VERSION', defaultValue: '1.0.0', description: 'Версия приложения')
+        booleanParam(name: 'RUN_LINT', defaultValue: true, description: 'Запускать линтер?')
+    }
 
-	environment {
-		APP_NAME = 'my-first-app'
-		BUILD_LABEL = '${params.APP_VERSION}-${BUILD_NUMBER}'
-	}
+    environment {
+        // Переменные, вычисляемые на основе параметров и встроенных переменных
+        APP_NAME = 'my-app'
+        BUILD_LABEL = "${params.APP_VERSION}-${BUILD_NUMBER}"
+    }
 
-	stages {
-		stage('Prepare') {
-			steps {
-				echo "Building ${env.APP_NAME} version ${env.BUILD_LABEL}"
-				echo "Target env: ${params.TARGET_ENV}"
-				sh 'echo "Current dir: $(pwd)"'
-				sh 'echo "Files:"'
-				sh 'ls -la'
+    stages {
+        stage('Prepare') {
+            steps {
+                echo "Building ${env.APP_NAME} version ${env.BUILD_LABEL}"
+                echo "Target env: ${params.TARGET_ENV}"
+                sh 'echo "Working dir: $(pwd)"'
+                sh 'ls -la'
+            }
+        }
 
-			}
-		}
+        stage('Parallel checks') {
+            // ЗАПУСКАЕМ ДВА ЭТАПА ОДНОВРЕМЕННО
+            parallel {
+                stage('Test') {
+                    steps {
+                        sh 'echo "Running tests..."'
+                        sh 'sleep 2' // Имитация работы
+                        sh 'echo "Tests passed"'
+                    }
+                }
+                stage('Lint') {
+                    // УСЛОВНОЕ ВЫПОЛНЕНИЕ: только если RUN_LINT == true
+                    when {
+                        expression { return params.RUN_LINT }
+                    }
+                    steps {
+                        sh 'echo "Running linter..."'
+                        sh 'sleep 1'
+                        sh 'echo "Lint OK"'
+                    }
+                }
+            }
+        }
 
-		stage('Parallel checks') {
-			parallel {
-				stage('Test') {
-					steps {
-						sh 'echo "Check the tests"'
-						sh 'sleep 5'
-						sh 'echo "Tests passed"'
-					}
-				}
+        stage('Package') {
+            steps {
+                sh 'echo "Packaging ${APP_NAME}:${BUILD_LABEL}..."'
+                sh 'echo "artefact-content" > build.txt'
+                // СОХРАНЯЕМ АРТЕФАКТ сборки
+                archiveArtifacts artifacts: 'build.txt', fingerprint: true
+            }
+        }
 
-				stage('Linting') {
-					when {
-						expression { return params.RUN_LINT }
-					}
-					steps {
-						sh 'echo "Running linters"'
-						sh 'sleep 3'
-						sh 'echo "Lint OK"'
-					}
-				}
-			}
-		}
+        stage('Deploy') {
+            // УСЛОВНОЕ ВЫПОЛНЕНИЕ: только для staging
+            when {
+                expression { return params.TARGET_ENV == 'staging' }
+            }
+            steps {
+                sh 'echo "Deploying to staging..."'
+            }
+        }
+    }
 
-		stage('Package') {
-			steps {
-				sh 'echo "Packaging ${env.APP_NAME}:${env.BUILD_LABEL}"'
-				sh 'echo "artefact-content" > build.txt'
-				archiveArtifacts artifacts: 'build.txt', fingerprint: true
-			}
-		}
-
-		stage('Deploy') {
-			when {
-				expression { return params.TARGET_ENV == 'staging' }
-			}
-			steps {
-				sh 'echo "Deploy to staging..."'
-			}
-		}
-	}
-
-	post {
-		success {
-			echo "Pipeline ${env.BUILD_LABEL} succeeded!"
-		}
-		failure {
-			echo "Pipeline ${env.BUILD_LABEL} failed!"
-		}
-		cleanup {
-			echo "lalala"
-		}
-	}
-
+    post {
+        success {
+            echo "✅ Pipeline ${env.BUILD_LABEL} succeeded!"
+        }
+        failure {
+            echo "❌ Pipeline ${env.BUILD_LABEL} failed!"
+        }
+        cleanup {
+            echo "Cleaning up..."
+            // cleanWs() раскомментируем в День 4
+        }
+    }
 }
