@@ -3,7 +3,7 @@ pipeline {
 
     options {
         timeout(time: 15, unit: 'MINUTES')
-        buildDiscarder(logRotator(numToKeepStr: '10'))
+        buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '5'))
         disableConcurrentBuilds()
     }
 
@@ -37,7 +37,7 @@ pipeline {
 
         stage('Docker Build') {
             steps {
-                sh 'docker build -t ${APP_NAME}:${IMAGE_TAG} -t ${APP_NAME}:latest .'
+                sh './scripts/build-docker.sh ${APP_NAME} ${IMAGE_TAG}'
                 sh 'docker images | grep ${APP_NAME} || true'
             }
         }
@@ -76,6 +76,7 @@ pipeline {
     }
 
     post {
+        cleanup { cleanWs() }
         success { echo "✅ Build ${IMAGE_TAG} succeeded" }
         failure { echo "❌ Build ${IMAGE_TAG} failed" }
         cleanup {
