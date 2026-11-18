@@ -1,15 +1,16 @@
+@Library('my-shared-lib@v1.0.0') _
+
 pipeline {
     agent any
 
     options {
-        timeout(time: 15, unit: 'MINUTES')
-        buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '5'))
+        timeout(time: 20, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '15', artifactNumToKeepStr: '5'))
         disableConcurrentBuilds()
     }
 
     parameters {
         string(name: 'APP_VERSION', defaultValue: '1.0.0', description: 'Version')
-        booleanParam(name: 'PUSH_IMAGE', defaultValue: false, description: 'Push to Docker Hub?')
     }
 
     environment {
@@ -20,65 +21,39 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
+                cleanWs()
                 checkout scm
                 sh 'git rev-parse --short HEAD'
             }
         }
 
-        stage('Secret lifecycle check') {
-            steps {
-                withCredentials([string(credentialsId: 'my-api-token', variable: 'API_TOKEN')]) {
-                    sh 'echo "Token length: ${#API_TOKEN}"'
-                    sh 'echo "Masked: $API_TOKEN"'
-                }
-                sh 'echo "Outside: ${API_TOKEN:-NOT_SET}"'
-            }
-        }
-
         stage('Docker Build') {
             steps {
-                sh './scripts/build-docker.sh ${APP_NAME} ${IMAGE_TAG}'
-                sh 'docker images | grep ${APP_NAME} || true'
+                // ВЫЗОВ ШАГА ИЗ SHARED LIBRARY
+                buildDockerImage(
+                    image: "${APP_NAME}",
+                    tag: "${IMAGE_TAG}"
+                )
             }
         }
 
-        stage('Docker Push') {
-            when {
-                expression { return params.PUSH_IMAGE }
-            }
+        stage('Notify') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'docker-hub',
-                    usernameVariable: 'DH_USER',
-                    passwordVariable: 'DH_PASS'
-                )]) {
-                    // set +x — чтобы команды не эхо-выводились с секретами
-                    sh '''
-                        set +x
-                        echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
-                    '''
-                    sh 'docker tag ${APP_NAME}:${IMAGE_TAG} $DH_USER/${APP_NAME}:${IMAGE_TAG}'
-                    sh 'docker tag ${APP_NAME}:${IMAGE_TAG} $DH_USER/${APP_NAME}:latest'
-                    sh 'docker push $DH_USER/${APP_NAME}:${IMAGE_TAG}'
-                    sh 'docker push $DH_USER/${APP_NAME}:latest'
-                }
-            }
-        }
-
-        stage('Run container') {
-            steps {
-                sh 'docker rm -f ${APP_NAME}-test || true'
-                sh 'docker run -d --name ${APP_NAME}-test ${APP_NAME}:${IMAGE_TAG}'
-                sh 'docker logs ${APP_NAME}-test'
-                sh 'docker rm -f ${APP_NAME}-test'
+                // ВТОРОЙ ШАГ ИЗ БИБЛИОТЕКИ
+                notifySlack(
+                    message: "Build ${IMAGE_TAG} succeeded!",
+                    channel: '#builds'
+                )
             }
         }
     }
 
     post {
-        
-        success { echo "✅ Build ${IMAGE_TAG} succeeded" }
-        failure { echo "❌ Build ${IMAGE_TAG} failed" }
-        cleanup { cleanWs() }
+        failure {
+            notifySlack(
+                message: "Build ${IMAGE_TAG} failed!",
+                channel: '#builds'
+            )
+        }
     }
 }
