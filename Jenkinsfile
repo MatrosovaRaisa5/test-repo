@@ -76,11 +76,9 @@ pipeline {
     }
 
     post {
-        cleanup { cleanWs() }
+        
         success { echo "✅ Build ${IMAGE_TAG} succeeded" }
         failure { echo "❌ Build ${IMAGE_TAG} failed" }
-        cleanup {
-            sh 'docker rmi ${APP_NAME}:latest || true'
-        }
+        cleanup { cleanWs() }
     }
 }
