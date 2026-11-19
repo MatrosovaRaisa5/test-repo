@@ -21,6 +21,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
+		echo 'Это сборка из ветки feature/test'
                 cleanWs()
                 checkout scm
                 sh 'git rev-parse --short HEAD'
