@@ -47,6 +47,16 @@ pipeline {
                 )
             }
         }
+
+        stage('Run on Specific Agent') {
+            agent { label 'my-build-agent' } 
+            
+            steps {
+                echo 'Этот этап выполняется на выделенном агенте docker-agent-1!'
+                sh 'hostname' 
+                sh 'docker ps'
+            }
+        }
     }
 
     post {
