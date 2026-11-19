@@ -54,7 +54,6 @@ pipeline {
             steps {
                 echo 'Этот этап выполняется на выделенном агенте docker-agent-1!'
                 sh 'hostname' 
-                sh 'docker ps'
             }
         }
     }
